@@ -23,6 +23,7 @@
   <div class="controls">
     <button id="showBtn">Show results</button>
     <button id="hideBtn">Hide results</button>
+    <button id="downloadBtn">Download PNG</button>
     <button id="clearBtn">Clear all votes (Firestore)</button>
 
     <div id="count">0 responses collected.</div>
@@ -38,7 +39,6 @@
       deleteDoc, doc, getDocs
     } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
 
-    // --- SAME Firebase config here ---
     const firebaseConfig = {
       apiKey: "AIzaSyC4xLiPUb1TPZ_96jZHxOOZfeZvPonONIA",
       authDomain: "fuzzy-tall-demo.firebaseapp.com",
@@ -57,6 +57,7 @@
     const ctx = canvas.getContext("2d");
     const showBtn = document.getElementById("showBtn");
     const hideBtn = document.getElementById("hideBtn");
+    const downloadBtn = document.getElementById("downloadBtn");
     const clearBtn = document.getElementById("clearBtn");
     const countEl = document.getElementById("count");
     const phaseNoteEl = document.getElementById("phaseNote");
@@ -146,7 +147,6 @@
       });
     }
 
-    // Live listener: update thresholds whenever Firestore changes
     onSnapshot(votesRef, (snapshot) => {
       thresholds = [];
       snapshot.forEach(d => {
@@ -185,6 +185,14 @@
       countEl.textContent = "0 responses collected.";
       phaseNoteEl.innerHTML = `<strong>Phase 1:</strong> Collecting responses (graph is hidden).`;
       redraw();
+    };
+
+    // NEW: download current canvas as PNG
+    downloadBtn.onclick = () => {
+      const link = document.createElement("a");
+      link.download = "fuzzy_tall_results.png";
+      link.href = canvas.toDataURL("image/png");
+      link.click();
     };
 
     // Initial draw
