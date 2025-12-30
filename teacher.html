@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Teacher – Tall Threshold Results</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; background: #f7f7f7; }
+    h1 { margin-bottom: 0.2em; }
+    .controls { margin-bottom: 1em; }
+    button { padding: 6px 12px; cursor: pointer; margin-right: 6px; }
+    canvas { background: #ffffff; border: 1px solid #ccc; margin-top: 15px; }
+    #count { font-style: italic; margin-top: 4px; }
+    #phaseNote { margin-top: 4px; font-size: 0.95em; }
+  </style>
+</head>
+<body>
+  <h1>Where Does “Tall” Begin? – Results</h1>
+  <p>
+    Phase 1: students submit from their devices.<br>
+    Phase 2: click <strong>“Show results”</strong> to reveal the distribution.
+  </p>
+
+  <div class="controls">
+    <button id="showBtn">Show results</button>
+    <button id="hideBtn">Hide results</button>
+    <button id="clearBtn">Clear all votes (Firestore)</button>
+
+    <div id="count">0 responses collected.</div>
+    <div id="phaseNote"><strong>Phase 1:</strong> Collecting responses (graph is hidden).</div>
+  </div>
+
+  <canvas id="chart" width="900" height="260"></canvas>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
+    import { 
+      getFirestore, collection, onSnapshot, deleteDoc, doc, getDocs 
+    } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
+
+    // Paste SAME config here
+    const firebaseConfig = {
+      // <<< REPLACE THIS with your Firebase config >>>
+      apiKey: "YOUR_API_KEY",
+      authDomain: "YOUR_AUTH_DOMAIN",
+      projectId: "YOUR_PROJECT_ID",
+      storageBucket: "YOUR_BUCKET",
+      messagingSenderId: "YOUR_SENDER_ID",
+      appId: "YOUR_APP_ID"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+    const votesRef = collection(db, "tall_votes");
+
+    const canvas = document.getElementById("chart");
+    const ctx = canvas.getContext("2d");
+    const showBtn = document.getElementById("showBtn");
+    const hideBtn = document.getElementById("hideBtn");
+    const clearBtn = document.getElementById("clearBtn");
+    const countEl = document.getElementById("count");
+    const phaseNoteEl = document.getElementById("phaseNote");
+
+    const minH = 140, maxH = 220;
+    const margin = 60;
+    const axisY = canvas.height - margin; // membership 0
+    const axisX0 = margin;
+    const axisX1 = canvas.width - margin;
+    const membershipTop = 40;             // membership 1
+
+    let thresholds = [];
+    let showResults = false;
+
+    function heightToX(h) {
+      return axisX0 + ((h - minH) / (maxH - minH)) * (axisX1 - axisX0);
+    }
+
+    function drawAxes() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      // X-axis
+      ctx.strokeStyle = "#333";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(axisX0, axisY);
+      ctx.lineTo(axisX1, axisY);
+      ctx.stroke();
+
+      // Ticks every 20 cm
+      ctx.font = "12px Arial";
+      ctx.fillStyle = "#333";
+      for (let h = minH; h <= maxH; h += 20) {
+        const x = heightToX(h);
+        ctx.beginPath();
+        ctx.moveTo(x, axisY);
+        ctx.lineTo(x, axisY - 8);
+        ctx.stroke();
+        ctx.fillText(h.toString(), x - 12, axisY + 18);
+      }
+
+      // Y labels: 0 and 1
+      ctx.fillText("1", axisX0 - 25, membershipTop + 4);
+      ctx.fillText("0", axisX0 - 25, axisY + 4);
+
+      // Axis labels
+      ctx.font = "14px Arial";
+      ctx.fillText("Height (cm)", (axisX0 + axisX1) / 2 - 40, axisY + 40);
+      ctx.save();
+      ctx.translate(20, canvas.height / 2);
+      ctx.rotate(-Math.PI / 2);
+      ctx.textAlign = "center";
+      ctx.fillText("Membership (tall)", 0, 0);
+      ctx.restore();
+    }
+
+    function redraw() {
+      drawAxes();
+      if (!showResults) return;
+
+      // Count votes per height
+      const counts = {};
+      thresholds.forEach(h => {
+        const key = h.toString();
+        counts[key] = (counts[key] || 0) + 1;
+      });
+
+      Object.keys(counts).forEach(key => {
+        const h = parseFloat(key);
+        const count = counts[key];
+        const x = heightToX(h);
+
+        // Vertical line
+        ctx.strokeStyle = "#1f77b4";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(x, axisY);
+        ctx.lineTo(x, membershipTop);
+        ctx.stroke();
+
+        // Red circle at top (size ∝ count)
+        const baseRadius = 4;
+        const radius = baseRadius + 2 * Math.sqrt(count - 1);
+        ctx.fillStyle = "red";
+        ctx.beginPath();
+        ctx.arc(x, membershipTop, radius, 0, 2 * Math.PI);
+        ctx.fill();
+      });
+    }
+
+    // Listen to live updates from Firestore
+    onSnapshot(votesRef, (snapshot) => {
+      thresholds = [];
+      snapshot.forEach(doc => {
+        const data = doc.data();
+        if (typeof data.height === "number") {
+          thresholds.push(data.height);
+        }
+      });
+      countEl.textContent = `${thresholds.length} responses collected.`;
+      if (!showResults) {
+        phaseNoteEl.innerHTML = `<strong>Phase 1:</strong> Collecting responses (graph is hidden).`;
+      }
+      redraw();
+    });
+
+    showBtn.onclick = () => {
+      showResults = true;
+      phaseNoteEl.innerHTML = `<strong>Phase 2:</strong> Results revealed.`;
+      redraw();
+    };
+
+    hideBtn.onclick = () => {
+      showResults = false;
+      phaseNoteEl.innerHTML = `<strong>Phase 1:</strong> Collecting responses (graph is hidden).`;
+      redraw();
+    };
+
+    clearBtn.onclick = async () => {
+      if (!confirm("Delete ALL votes from Firestore?")) return;
+      const snap = await getDocs(votesRef);
+      const promises = [];
+      snap.forEach(d => {
+        promises.push(deleteDoc(doc(db, "tall_votes", d.id)));
+      });
+      await Promise.all(promises);
+      thresholds = [];
+      showResults = false;
+      countEl.textContent = "0 responses collected.";
+      phaseNoteEl.innerHTML = `<strong>Phase 1:</strong> Collecting responses (graph is hidden).`;
+      redraw();
+    };
+
+    // Initial draw
+    redraw();
+  </script>
+</body>
+</html>

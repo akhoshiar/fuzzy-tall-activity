@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Student – Where Does Tall Begin?</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; }
+    label { font-weight: bold; }
+    input[type="number"] { width: 100px; padding: 4px; margin: 0 0.5em; }
+    button { padding: 6px 12px; cursor: pointer; }
+    #msg { margin-top: 10px; font-size: 0.95em; }
+  </style>
+</head>
+<body>
+  <h1>Where Does “Tall” Begin?</h1>
+  <p>Please enter the height (in cm) at which you consider a person to be <strong>tall</strong> (membership = 1).</p>
+
+  <label for="heightInput">Tall starts at (cm):</label>
+  <input id="heightInput" type="number" min="140" max="220" step="1" />
+  <button id="submitBtn">Submit</button>
+
+  <div id="msg"></div>
+
+  <script type="module">
+    // 1) Import Firebase SDK
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
+    import { getFirestore, collection, addDoc, serverTimestamp } 
+      from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
+
+    // 2) Paste YOUR Firebase config here
+    const firebaseConfig = {
+      // <<< REPLACE THIS with your config from Firebase console >>>
+      apiKey: "YOUR_API_KEY",
+      authDomain: "YOUR_AUTH_DOMAIN",
+      projectId: "YOUR_PROJECT_ID",
+      storageBucket: "YOUR_BUCKET",
+      messagingSenderId: "YOUR_SENDER_ID",
+      appId: "YOUR_APP_ID"
+    };
+
+    // 3) Init Firebase
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+    const votesRef = collection(db, "tall_votes");
+
+    const heightInput = document.getElementById("heightInput");
+    const submitBtn = document.getElementById("submitBtn");
+    const msg = document.getElementById("msg");
+
+    async function submitVote() {
+      msg.textContent = "";
+      const val = parseFloat(heightInput.value);
+      if (isNaN(val)) {
+        msg.textContent = "Please enter a number.";
+        return;
+      }
+      if (val < 140 || val > 220) {
+        msg.textContent = "Please enter a value between 140 and 220 cm.";
+        return;
+      }
+
+      try {
+        await addDoc(votesRef, {
+          height: val,
+          timestamp: serverTimestamp()
+        });
+        msg.textContent = "Thank you! Your answer has been recorded.";
+        heightInput.value = "";
+        submitBtn.disabled = true;   // prevent multiple submissions from same student
+        heightInput.disabled = true;
+      } catch (e) {
+        console.error(e);
+        msg.textContent = "Error saving your answer. Please tell the instructor.";
+      }
+    }
+
+    submitBtn.addEventListener("click", submitVote);
+    heightInput.addEventListener("keyup", (e) => {
+      if (e.key === "Enter") submitVote();
+    });
+  </script>
+</body>
+</html>
