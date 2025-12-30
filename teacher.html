@@ -24,6 +24,7 @@
     <button id="showBtn">Show results</button>
     <button id="hideBtn">Hide results</button>
     <button id="downloadBtn">Download PNG</button>
+    <button id="downloadDataBtn">Download CSV (for MATLAB)</button>
     <button id="clearBtn">Clear all votes (Firestore)</button>
 
     <div id="count">0 responses collected.</div>
@@ -58,6 +59,7 @@
     const showBtn = document.getElementById("showBtn");
     const hideBtn = document.getElementById("hideBtn");
     const downloadBtn = document.getElementById("downloadBtn");
+    const downloadDataBtn = document.getElementById("downloadDataBtn");
     const clearBtn = document.getElementById("clearBtn");
     const countEl = document.getElementById("count");
     const phaseNoteEl = document.getElementById("phaseNote");
@@ -71,6 +73,7 @@
 
     let shortBounds = [];
     let tallBounds = [];
+    let votes = [];       // store paired short/tall per student for CSV export
     let showResults = false;
 
     function heightToX(h) {
@@ -126,14 +129,12 @@
       drawAxes();
       if (!showResults) return;
 
-      // Aggregate counts for short boundaries
       const shortCounts = {};
       shortBounds.forEach(h => {
         const key = h.toString();
         shortCounts[key] = (shortCounts[key] || 0) + 1;
       });
 
-      // Aggregate counts for tall boundaries
       const tallCounts = {};
       tallBounds.forEach(h => {
         const key = h.toString();
@@ -187,18 +188,21 @@
     onSnapshot(votesRef, (snapshot) => {
       shortBounds = [];
       tallBounds = [];
+      votes = [];
       let n = 0;
 
       snapshot.forEach(d => {
         const data = d.data();
-        // Support both old (height) and new (short, tall) schemas gracefully
+        // new schema: short & tall
         if (typeof data.short === "number" && typeof data.tall === "number") {
           shortBounds.push(data.short);
           tallBounds.push(data.tall);
+          votes.push({ short: data.short, tall: data.tall });
           n++;
         } else if (typeof data.height === "number") {
-          // legacy single-threshold docs mapped as tall-only
+          // legacy schema: single height => treat as tall-only
           tallBounds.push(data.height);
+          votes.push({ short: NaN, tall: data.height });
           n++;
         }
       });
@@ -232,6 +236,7 @@
       await Promise.all(promises);
       shortBounds = [];
       tallBounds = [];
+      votes = [];
       showResults = false;
       countEl.textContent = "0 responses collected.";
       phaseNoteEl.innerHTML = `<strong>Phase 1:</strong> Collecting responses (graph is hidden).`;
@@ -244,6 +249,32 @@
       link.download = "height_category_boundaries.png";
       link.href = canvas.toDataURL("image/png");
       link.click();
+    };
+
+    // Download CSV for MATLAB: H_short, H_medium, H_tall
+    downloadDataBtn.onclick = () => {
+      if (votes.length === 0) {
+        alert("No data to download yet.");
+        return;
+      }
+
+      let csv = "H_short,H_medium,H_tall\n";
+      votes.forEach(v => {
+        const hs = v.short;
+        const ht = v.tall;
+        if (!isNaN(hs) && !isNaN(ht)) {
+          const hm = (hs + ht) / 2;
+          csv += `${hs},${hm},${ht}\n`;
+        }
+      });
+
+      const blob = new Blob([csv], { type: "text/csv" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "height_boundaries_for_matlab.csv";
+      a.click();
+      URL.revokeObjectURL(url);
     };
 
     // Initial draw
