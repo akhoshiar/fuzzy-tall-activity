@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Fuzzy Wall-Following Rule Demo</title>
+  <title>Fuzzy Wall-Following</title>
   <style>
     body {
       font-family: Arial, sans-serif;
@@ -12,12 +12,14 @@
     h1 {
       text-align: center;
       margin-bottom: 0.2em;
+      font-size: 2.4em;
     }
     h2 {
       text-align: center;
       font-size: 1.1em;
       font-weight: normal;
       color: #444;
+      margin-top: 0;
     }
     #controls {
       margin: 20px auto;
@@ -30,14 +32,16 @@
     select {
       padding: 4px 6px;
       margin-right: 20px;
+      font-size: 1em;
     }
     button {
       padding: 6px 14px;
       cursor: pointer;
       font-weight: bold;
+      font-size: 1em;
     }
     #output {
-      margin-top: 20px;
+      margin-top: 15px;
       text-align: center;
       font-size: 1.1em;
       min-height: 1.5em;
@@ -46,7 +50,7 @@
       font-weight: bold;
     }
     #ruleTableWrapper {
-      margin: 30px auto;
+      margin: 30px auto 10px auto;
       width: 460px;
     }
     table {
@@ -64,12 +68,21 @@
       background: #eee;
       font-weight: bold;
     }
+    #sceneWrapper {
+      margin-top: 25px;
+      text-align: center;
+    }
+    #scene {
+      background: #ffffff;
+      border: 1px solid #ccc;
+    }
   </style>
 </head>
 <body>
   <h1>Fuzzy Wall-Following</h1>
   <h2>Rule-based mapping from sensor conditions to Speed &amp; Steering</h2>
 
+  <!-- Controls -->
   <div id="controls">
     <label for="front">Right FRONT:</label>
     <select id="front">
@@ -88,10 +101,10 @@
     <button id="evalBtn">Evaluate rule</button>
   </div>
 
-  <div id="output">
-    <!-- Speed & Steering results appear here -->
-  </div>
+  <!-- Text output -->
+  <div id="output"></div>
 
+  <!-- Rule table -->
   <div id="ruleTableWrapper">
     <table>
       <tr>
@@ -126,14 +139,21 @@
     </table>
   </div>
 
+  <!-- Robot scene -->
+  <div id="sceneWrapper">
+    <canvas id="scene" width="800" height="350"></canvas>
+  </div>
+
   <script>
     const frontSel = document.getElementById("front");
     const backSel  = document.getElementById("back");
     const output   = document.getElementById("output");
     const evalBtn  = document.getElementById("evalBtn");
+    const canvas   = document.getElementById("scene");
+    const ctx      = canvas.getContext("2d");
 
+    // ----- Rule base (same as MATLAB) ----------------------------------
     function ruleBase(front, back) {
-      // mirror of your MATLAB ruleBase()
       if (front === "Near" && back === "Near") {
         return { speed: "Slow",   steer: "Left" };
       } else if (front === "Near" && back === "Medium") {
@@ -155,6 +175,222 @@
       }
     }
 
+    // ----- Geometry helpers (mirror MATLAB) ----------------------------
+    const wallX = 1.5;    // wall at x = 1.5 m
+    const L = 0.30;       // robot length  (front-back)
+    const W = 0.20;       // robot width   (left-right)
+    const halfL = L / 2;
+    const halfW = W / 2;
+
+    // Map labels to concrete distances to wall
+    function labelToDistance(label) {
+      switch (label) {
+        case "Near":   return 0.25;
+        case "Medium": return 0.55;
+        case "Far":    return 0.85;
+        default:       return 0.55;
+      }
+    }
+
+    // Compute robot pose (xr, yr, theta) from FRONT/BACK labels
+    function poseFromLabels(frontLabel, backLabel) {
+      // sensors in BODY frame (front-right & back-right)
+      const pFrontB = [ +halfL, +halfW ];
+      const pBackB  = [ -halfL, +halfW ];
+
+      const dF = labelToDistance(frontLabel);
+      const dB = labelToDistance(backLabel);
+
+      // choose y positions just for drawing
+      const yF = 0.7;
+      const yB = 0.4;
+
+      const xF = wallX - dF;
+      const xB = wallX - dB;
+
+      const vW = [xF - xB, yF - yB];
+      const th = Math.atan2(vW[1], vW[0]);
+
+      const R = [
+        [Math.cos(th), -Math.sin(th)],
+        [Math.sin(th),  Math.cos(th)]
+      ];
+
+      // t = front sensor world - R * pFrontB
+      const RF = [
+        R[0][0]*pFrontB[0] + R[0][1]*pFrontB[1],
+        R[1][0]*pFrontB[0] + R[1][1]*pFrontB[1]
+      ];
+      const xr = xF - RF[0];
+      const yr = yF - RF[1];
+
+      return { xr, yr, th };
+    }
+
+    // ----- World→Canvas transform --------------------------------------
+    const xMin = 0, xMax = 2.0;
+    const yMin = -0.1, yMax = 1.1;
+    const margin = 40;
+    const scaleX = (canvas.width  - 2*margin) / (xMax - xMin);
+    const scaleY = (canvas.height - 2*margin) / (yMax - yMin);
+
+    function worldToCanvas(x, y) {
+      const cx = margin + (x - xMin) * scaleX;
+      const cy = canvas.height - margin - (y - yMin) * scaleY;
+      return [cx, cy];
+    }
+
+    // ----- Draw wall + robot + sensors + arrow -------------------------
+    function drawScene(frontLabel, backLabel, speedLabel, steerLabel) {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      // 1) draw wall
+      ctx.strokeStyle = "black";
+      ctx.lineWidth = 3;
+      const wallBottom = worldToCanvas(wallX, yMin)[1];
+      const wallTop    = worldToCanvas(wallX, yMax)[1];
+      const wallPixX   = worldToCanvas(wallX, 0)[0];
+      ctx.beginPath();
+      ctx.moveTo(wallPixX, wallBottom);
+      ctx.lineTo(wallPixX, wallTop);
+      ctx.stroke();
+
+      // 2) robot pose
+      const pose = poseFromLabels(frontLabel, backLabel);
+      const xr = pose.xr;
+      const yr = pose.yr;
+      const th = pose.th;
+
+      // rectangle corners in BODY frame
+      const body = [
+        [-halfL, -halfW],
+        [ halfL, -halfW],
+        [ halfL,  halfW],
+        [-halfL,  halfW]
+      ];
+
+      // sensors in BODY frame (front-right, back-right)
+      const pFrontB = [ +halfL, +halfW ];
+      const pBackB  = [ -halfL, +halfW ];
+
+      // rotation matrix
+      const c = Math.cos(th), s = Math.sin(th);
+      const R = [[c, -s],[s, c]];
+
+      function bodyToWorld(pB) {
+        const xW = xr + R[0][0]*pB[0] + R[0][1]*pB[1];
+        const yW = yr + R[1][0]*pB[0] + R[1][1]*pB[1];
+        return [xW, yW];
+      }
+
+      // body polygon in world & canvas
+      const bodyC = body.map(pB => {
+        const pW = bodyToWorld(pB);
+        return worldToCanvas(pW[0], pW[1]);
+      });
+
+      // 3) draw robot body
+      ctx.fillStyle = "rgba(240,230,255,0.9)";
+      ctx.strokeStyle = "red";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(bodyC[0][0], bodyC[0][1]);
+      for (let i = 1; i < bodyC.length; i++) {
+        ctx.lineTo(bodyC[i][0], bodyC[i][1]);
+      }
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+
+      // 4) sensors
+      const pFrontW = bodyToWorld(pFrontB);
+      const pBackW  = bodyToWorld(pBackB);
+      const pFrontC = worldToCanvas(pFrontW[0], pFrontW[1]);
+      const pBackC  = worldToCanvas(pBackW[0],  pBackW[1]);
+
+      ctx.fillStyle = "#003366";
+      ctx.strokeStyle = "black";
+      ctx.lineWidth = 1.5;
+
+      function drawSensor(pC, label, offsetY) {
+        ctx.beginPath();
+        ctx.arc(pC[0], pC[1], 6, 0, 2*Math.PI);
+        ctx.fill();
+        ctx.stroke();
+        ctx.font = "11px Arial";
+        ctx.fillStyle = "black";
+        ctx.textAlign = "center";
+        ctx.fillText(label, pC[0], pC[1] + offsetY);
+      }
+
+      drawSensor(pFrontC, "Front right", -10);
+      drawSensor(pBackC,  "Back right",  20);
+
+      // 5) dashed lines from sensors to wall
+      ctx.setLineDash([6,4]);
+      ctx.strokeStyle = "black";
+      ctx.beginPath();
+      ctx.moveTo(pFrontC[0], pFrontC[1]);
+      ctx.lineTo(worldToCanvas(wallX, pFrontW[1])[0], worldToCanvas(wallX, pFrontW[1])[1]);
+      ctx.moveTo(pBackC[0], pBackC[1]);
+      ctx.lineTo(worldToCanvas(wallX, pBackW[1])[0], worldToCanvas(wallX, pBackW[1])[1]);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // 6) motion arrow from robot centre
+      let Larrow;
+      if (speedLabel === "Slow")   Larrow = 0.20;
+      else if (speedLabel === "Medium") Larrow = 0.30;
+      else if (speedLabel === "Fast")   Larrow = 0.40;
+      else Larrow = 0; // Zero
+
+      const centreC = worldToCanvas(xr, yr);
+      if (Larrow > 0) {
+        const dx = Larrow * Math.cos(th);
+        const dy = Larrow * Math.sin(th);
+        const tipW = [xr + dx, yr + dy];
+        const tipC = worldToCanvas(tipW[0], tipW[1]);
+
+        ctx.strokeStyle = "red";
+        ctx.fillStyle = "red";
+        ctx.lineWidth = 2;
+
+        // main line
+        ctx.beginPath();
+        ctx.moveTo(centreC[0], centreC[1]);
+        ctx.lineTo(tipC[0], tipC[1]);
+        ctx.stroke();
+
+        // small arrow head
+        const headLen = 10;
+        const ang = Math.atan2(tipC[1] - centreC[1], tipC[0] - centreC[0]);
+        ctx.beginPath();
+        ctx.moveTo(tipC[0], tipC[1]);
+        ctx.lineTo(tipC[0] - headLen*Math.cos(ang - Math.PI/6),
+                   tipC[1] - headLen*Math.sin(ang - Math.PI/6));
+        ctx.lineTo(tipC[0] - headLen*Math.cos(ang + Math.PI/6),
+                   tipC[1] - headLen*Math.sin(ang + Math.PI/6));
+        ctx.closePath();
+        ctx.fill();
+      } else {
+        // just draw a dot if speed is Zero
+        ctx.fillStyle = "black";
+        ctx.beginPath();
+        ctx.arc(centreC[0], centreC[1], 3, 0, 2*Math.PI);
+        ctx.fill();
+      }
+
+      // 7) labels
+      ctx.font = "12px Arial";
+      ctx.fillStyle = "black";
+      ctx.textAlign = "left";
+      ctx.fillText("Wall", wallPixX + 5, wallTop + 15);
+
+      ctx.textAlign = "center";
+      ctx.fillText("x (m)", canvas.width / 2, canvas.height - 5);
+    }
+
+    // ----- Main evaluation ----------------------------------------------
     function evaluate() {
       const front = frontSel.value;
       const back  = backSel.value;
@@ -164,11 +400,13 @@
         `For <span>Right FRONT = ${front}</span> and ` +
         `<span>Right BACK = ${back}</span><br>` +
         `⇒ <span>Speed = ${speed}</span>, <span>Steering = ${steer}</span>`;
+
+      drawScene(front, back, speed, steer);
     }
 
     evalBtn.addEventListener("click", evaluate);
 
-    // Evaluate once on page load
+    // initial draw
     evaluate();
   </script>
 </body>
