@@ -1,182 +1,222 @@
-function fuzzyHeightApp
-% fuzzyHeightApp
-% Small interactive app to demonstrate fuzzification of height
-% into Short / Medium / Tall memberships.
-%
-% - Enter three heights: H_short < H_medium < H_tall
-% - The app draws membership functions:
-%       Short  : left shoulder
-%       Medium : triangle
-%       Tall   : right shoulder
-% - Enter a test height x0 (e.g. 176 cm)
-% - The app shows mu_short, mu_medium, mu_tall as numbers & %
-%   and marks the membership values on the plot.
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Fuzzy Height Membership Demo</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; background: #f7f7f7; }
+    h1 { text-align: center; }
+    canvas {
+      display: block;
+      margin: 0 auto;
+      background: #ffffff;
+      border: 1px solid #ccc;
+    }
+    #controls {
+      margin-top: 10px;
+      text-align: center;
+    }
+    label { font-weight: bold; margin-right: 4px; }
+    input[type="number"] { width: 70px; margin-right: 12px; }
+    button { padding: 6px 12px; margin-left: 6px; cursor: pointer; }
+    #results { margin-top: 10px; text-align: center; font-size: 0.95em; }
+    #error { margin-top: 6px; text-align: center; color: darkred; min-height: 1.2em; }
+  </style>
+</head>
+<body>
+  <h1>Fuzzy Height Membership Demo</h1>
 
-    % ----- Basic parameters ---------------------------------------------
-    xmin = 140;
-    xmax = 220;
+  <canvas id="chart" width="900" height="350"></canvas>
 
-    % Default example values
-    Hs_default = 160;
-    Hm_default = 175;
-    Ht_default = 190;
-    x0_default = 176;
+  <div id="controls">
+    <label>H<sub>short</sub> (cm):</label>
+    <input id="Hshort" type="number" value="160" min="140" max="220">
 
-    % ----- Create UI figure ---------------------------------------------
-    fig = uifigure('Name','Fuzzy Height Membership Demo', ...
-                   'Position',[200 100 950 520]);
+    <label>H<sub>medium</sub> (cm):</label>
+    <input id="Hmed" type="number" value="175" min="140" max="220">
 
-    ax = uiaxes(fig, ...
-        'Position',[70 160 820 330], ...
-        'BackgroundColor','w');
-    ax.XLim = [xmin xmax];
-    ax.YLim = [0 1.05];
-    ax.Box = 'on';
-    ax.XLabel.String = 'Height (cm)';
-    ax.YLabel.String = 'Membership degree';
-    title(ax,'Short / Medium / Tall Memberships');
+    <label>H<sub>tall</sub> (cm):</label>
+    <input id="Htail" type="number" value="190" min="140" max="220">
 
-    % ----- Controls ------------------------------------------------------
-    % H_short
-    uilabel(fig,'Position',[70 120 120 22], ...
-                 'Text','H_{short} (cm):','FontWeight','bold');
-    editHshort = uieditfield(fig,'numeric', ...
-        'Position',[180 120 70 22], ...
-        'Limits',[xmin xmax], ...
-        'Value',Hs_default);
+    <label>x (cm):</label>
+    <input id="x0" type="number" value="176" min="140" max="220">
 
-    % H_medium
-    uilabel(fig,'Position',[270 120 120 22], ...
-                 'Text','H_{medium} (cm):','FontWeight','bold');
-    editHmed = uieditfield(fig,'numeric', ...
-        'Position',[390 120 70 22], ...
-        'Limits',[xmin xmax], ...
-        'Value',Hm_default);
+    <button id="updateBtn">Update + fuzzify</button>
+  </div>
 
-    % H_tall
-    uilabel(fig,'Position',[480 120 120 22], ...
-                 'Text','H_{tall} (cm):','FontWeight','bold');
-    editHtail = uieditfield(fig,'numeric', ...
-        'Position',[580 120 70 22], ...
-        'Limits',[xmin xmax], ...
-        'Value',Ht_default);
+  <div id="error"></div>
+  <div id="results"></div>
 
-    % Test height x0
-    uilabel(fig,'Position',[670 120 120 22], ...
-                 'Text','Test height (cm):','FontWeight','bold');
-    editX0 = uieditfield(fig,'numeric', ...
-        'Position',[800 120 70 22], ...
-        'Limits',[xmin xmax], ...
-        'Value',x0_default);
+  <script>
+    const canvas = document.getElementById("chart");
+    const ctx = canvas.getContext("2d");
+    const minH = 140, maxH = 220;
+    const marginLeft = 60, marginRight = 40, marginTop = 40, marginBottom = 40;
+    const axisY = canvas.height - marginBottom;
+    const axisX = marginLeft;
 
-    % Button
-    btn = uibutton(fig,'Text','Update + fuzzify', ...
-        'Position',[400 80 150 30], ...
-        'ButtonPushedFcn',@(src,event) updateAndFuzzify());
+    const HshortEl = document.getElementById("Hshort");
+    const HmedEl   = document.getElementById("Hmed");
+    const HtailEl  = document.getElementById("Htail");
+    const x0El     = document.getElementById("x0");
+    const updateBtn = document.getElementById("updateBtn");
+    const errorDiv  = document.getElementById("error");
+    const resultsDiv = document.getElementById("results");
 
-    % Results labels
-    lblShort = uilabel(fig,'Position',[70 40 270 22], ...
-        'Text','Short:   μ = -,   % = -');
-    lblMed   = uilabel(fig,'Position',[350 40 270 22], ...
-        'Text','Medium:  μ = -,   % = -');
-    lblTall  = uilabel(fig,'Position',[630 40 270 22], ...
-        'Text','Tall:    μ = -,   % = -');
+    function hToX(h) {
+      return axisX + (h - minH) / (maxH - minH) * (canvas.width - marginLeft - marginRight);
+    }
 
-    % ----- Helper: membership functions ---------------------------------
-    function mu = muShort(x,Hs,Hm)
-        % Left-shoulder: 1 for x <= Hs, 0 for x >= Hm
-        mu = zeros(size(x));
-        mu(x <= Hs) = 1;
-        idx = x > Hs & x < Hm;
-        if Hm > Hs
-            mu(idx) = (Hm - x(idx)) ./ (Hm - Hs);
-        end
-        mu(x >= Hm) = 0;
-    end
+    function drawAxes() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    function mu = muMedium(x,Hs,Hm,Ht)
-        % Triangle (Hs -> Hm -> Ht)
-        mu = zeros(size(x));
-        left = x >= Hs & x <= Hm;
-        right = x > Hm & x <= Ht;
-        if Hm > Hs
-            mu(left) = (x(left) - Hs) ./ (Hm - Hs);
-        end
-        if Ht > Hm
-            mu(right) = (Ht - x(right)) ./ (Ht - Hm);
-        end
-    end
+      // axes
+      ctx.strokeStyle = "#333";
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(axisX, axisY);
+      ctx.lineTo(canvas.width - marginRight, axisY);
+      ctx.moveTo(axisX, axisY);
+      ctx.lineTo(axisX, marginTop);
+      ctx.stroke();
 
-    function mu = muTall(x,Hm,Ht)
-        % Right-shoulder: 0 for x <= Hm, 1 for x >= Ht
-        mu = zeros(size(x));
-        mu(x >= Ht) = 1;
-        idx = x > Hm & x < Ht;
-        if Ht > Hm
-            mu(idx) = (x(idx) - Hm) ./ (Ht - Hm);
-        end
-    end
+      // ticks
+      ctx.font = "12px Arial";
+      ctx.fillStyle = "#000";
+      for (let h = minH; h <= maxH; h += 10) {
+        const x = hToX(h);
+        ctx.beginPath();
+        ctx.moveTo(x, axisY);
+        ctx.lineTo(x, axisY - 5);
+        ctx.stroke();
+        ctx.fillText(String(h), x - 10, axisY + 15);
+      }
+      ctx.fillText("Height (cm)", canvas.width/2 - 40, axisY + 30);
 
-    % ----- Main update + fuzzification ----------------------------------
-    function updateAndFuzzify()
-        Hs = editHshort.Value;
-        Hm = editHmed.Value;
-        Ht = editHtail.Value;
-        x0 = editX0.Value;
+      // y labels
+      ctx.textAlign = "right";
+      ctx.fillText("0", axisX - 10, axisY + 4);
+      ctx.fillText("1", axisX - 10, marginTop + 4);
+      ctx.textAlign = "left";
 
-        if ~(Hs < Hm && Hm < Ht)
-            uialert(fig,'You must have H_{short} < H_{medium} < H_{tall}.', ...
-                        'Invalid ordering');
-            return;
-        end
+      ctx.font = "18px Arial";
+      ctx.textAlign = "center";
+      ctx.fillText("Short / Medium / Tall Memberships", canvas.width/2, marginTop - 10);
+      ctx.textAlign = "left";
+    }
 
-        % x-grid for plotting
-        x = linspace(xmin, xmax, 500);
+    // membership functions
+    function muShort(x, Hs, Hm) {
+      if (x <= Hs) return 1;
+      if (x >= Hm) return 0;
+      return (Hm - x) / (Hm - Hs);
+    }
+    function muMedium(x, Hs, Hm, Ht) {
+      if (x <= Hs || x >= Ht) return 0;
+      if (x === Hm) return 1;
+      if (x < Hm) return (x - Hs) / (Hm - Hs);
+      return (Ht - x) / (Ht - Hm);
+    }
+    function muTall(x, Hm, Ht) {
+      if (x <= Hm) return 0;
+      if (x >= Ht) return 1;
+      return (x - Hm) / (Ht - Hm);
+    }
 
-        muS = muShort(x,Hs,Hm);
-        muM = muMedium(x,Hs,Hm,Ht);
-        muT = muTall(x,Hm,Ht);
+    function update() {
+      errorDiv.textContent = "";
+      resultsDiv.textContent = "";
 
-        % Fuzzify test height x0
-        muS0 = muShort(x0,Hs,Hm);
-        muM0 = muMedium(x0,Hs,Hm,Ht);
-        muT0 = muTall(x0,Hm,Ht);
+      const Hs = parseFloat(HshortEl.value);
+      const Hm = parseFloat(HmedEl.value);
+      const Ht = parseFloat(HtailEl.value);
+      const x0 = parseFloat(x0El.value);
 
-        % ---- Plot ------------------------------------------------------
-        cla(ax);
-        hold(ax,'on');
+      if ([Hs,Hm,Ht,x0].some(v => isNaN(v))) {
+        errorDiv.textContent = "Please enter all four values.";
+        drawAxes();
+        return;
+      }
+      if (!(Hs < Hm && Hm < Ht)) {
+        errorDiv.textContent = "You must have H_short < H_medium < H_tall.";
+        drawAxes();
+        return;
+      }
+      if (x0 < minH || x0 > maxH) {
+        errorDiv.textContent = `x must be between ${minH} and ${maxH} cm.`;
+        drawAxes();
+        return;
+      }
 
-        plot(ax,x,muS,'LineWidth',2,'Color',[0 0.7 0]);       % green
-        plot(ax,x,muM,'LineWidth',2,'Color',[0.9 0.3 0.3]);   % red
-        plot(ax,x,muT,'LineWidth',2,'Color',[0.9 0.8 0.1]);   % yellow
+      // compute membership curves
+      const n = 400;
+      const xs = [];
+      const muS = [], muM = [], muT = [];
+      for (let i = 0; i < n; i++) {
+        const x = minH + i*(maxH-minH)/(n-1);
+        xs.push(x);
+        muS.push(muShort(x,Hs,Hm));
+        muM.push(muMedium(x,Hs,Hm,Ht));
+        muT.push(muTall(x,Hm,Ht));
+      }
 
-        % vertical line at x0
-        plot(ax,[x0 x0],[0 1],'k--','LineWidth',1);
+      drawAxes();
 
-        % markers at membership values for x0
-        plot(ax,x0,muS0,'o','Color',[0 0.7 0],'MarkerFaceColor',[0 0.7 0]);
-        plot(ax,x0,muM0,'o','Color',[0.9 0.3 0.3],'MarkerFaceColor',[0.9 0.3 0.3]);
-        plot(ax,x0,muT0,'o','Color',[0.9 0.8 0.1],'MarkerFaceColor',[0.9 0.8 0.1]);
+      // draw curves
+      function drawCurve(values, color) {
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        for (let i = 0; i < n; i++) {
+          const xPix = hToX(xs[i]);
+          const yPix = axisY - values[i]*(axisY - marginTop);
+          if (i === 0) ctx.moveTo(xPix, yPix); else ctx.lineTo(xPix, yPix);
+        }
+        ctx.stroke();
+      }
 
-        ax.XLim = [xmin xmax];
-        ax.YLim = [0 1.05];
-        ax.XLabel.String = 'Height (cm)';
-        ax.YLabel.String = 'Membership degree';
-        title(ax,sprintf('Fuzzy memberships for x = %.1f cm',x0));
-        legend(ax,{'Short','Medium','Tall','x_0'}, ...
-            'Location','southoutside','Orientation','horizontal');
+      drawCurve(muS, "#008000"); // green
+      drawCurve(muM, "#e24a33"); // red
+      drawCurve(muT, "#d8b11a"); // yellow
 
-        hold(ax,'off');
+      // fuzzify x0
+      const muS0 = muShort(x0,Hs,Hm);
+      const muM0 = muMedium(x0,Hs,Hm,Ht);
+      const muT0 = muTall(x0,Hm,Ht);
 
-        % ---- Update labels --------------------------------------------
-        lblShort.Text = sprintf('Short:   \\mu = %.3f   (%.1f%%)', ...
-                                muS0, 100*muS0);
-        lblMed.Text   = sprintf('Medium:  \\mu = %.3f   (%.1f%%)', ...
-                                muM0, 100*muM0);
-        lblTall.Text  = sprintf('Tall:    \\mu = %.3f   (%.1f%%)', ...
-                                muT0, 100*muT0);
-    end
+      // vertical line at x0
+      const xPix0 = hToX(x0);
+      ctx.setLineDash([6,4]);
+      ctx.strokeStyle = "#000";
+      ctx.beginPath();
+      ctx.moveTo(xPix0, axisY);
+      ctx.lineTo(xPix0, marginTop);
+      ctx.stroke();
+      ctx.setLineDash([]);
 
-    % initial draw
-    updateAndFuzzify();
-end
+      // markers
+      function drawMarker(mu, color) {
+        const yPix = axisY - mu*(axisY - marginTop);
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.arc(xPix0, yPix, 4, 0, 2*Math.PI);
+        ctx.fill();
+      }
+      drawMarker(muS0, "#008000");
+      drawMarker(muM0, "#e24a33");
+      drawMarker(muT0, "#d8b11a");
+
+      resultsDiv.innerHTML =
+        `Short: μ = ${muS0.toFixed(3)} (${(muS0*100).toFixed(1)}%) &nbsp; | ` +
+        `Medium: μ = ${muM0.toFixed(3)} (${(muM0*100).toFixed(1)}%) &nbsp; | ` +
+        `Tall: μ = ${muT0.toFixed(3)} (${(muT0*100).toFixed(1)}%)`;
+    }
+
+    updateBtn.addEventListener("click", update);
+
+    // initial draw
+    drawAxes();
+    update();
+  </script>
+</body>
+</html>
