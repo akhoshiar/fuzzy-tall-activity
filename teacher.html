@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Teacher – Tall Threshold Results</title>
+  <title>Teacher – Height Category Boundaries</title>
   <style>
     body { font-family: Arial, sans-serif; margin: 20px; background: #f7f7f7; }
     h1 { margin-bottom: 0.2em; }
@@ -14,10 +14,10 @@
   </style>
 </head>
 <body>
-  <h1>Where Does “Tall” Begin? – Results</h1>
+  <h1>Where Do Short / Medium / Tall Begin? – Class Results</h1>
   <p>
     Phase 1: students submit from their devices.<br>
-    Phase 2: click <strong>“Show results”</strong> to reveal the distribution.
+    Phase 2: click <strong>“Show results”</strong> to reveal the boundaries for short and tall.
   </p>
 
   <div class="controls">
@@ -69,7 +69,8 @@
     const axisX1 = canvas.width - margin;
     const membershipTop = 40;             // membership 1
 
-    let thresholds = [];
+    let shortBounds = [];
+    let tallBounds = [];
     let showResults = false;
 
     function heightToX(h) {
@@ -110,26 +111,62 @@
       ctx.translate(20, canvas.height / 2);
       ctx.rotate(-Math.PI / 2);
       ctx.textAlign = "center";
-      ctx.fillText("Membership (tall)", 0, 0);
+      ctx.fillText("Membership (category)", 0, 0);
       ctx.restore();
+
+      // Legend
+      ctx.font = "12px Arial";
+      ctx.fillStyle = "green";
+      ctx.fillText("H_short (short/medium boundary)", axisX0 + 10, 30);
+      ctx.fillStyle = "blue";
+      ctx.fillText("H_tall (medium/tall boundary)", axisX0 + 10, 48);
     }
 
     function redraw() {
       drawAxes();
       if (!showResults) return;
 
-      const counts = {};
-      thresholds.forEach(h => {
+      // Aggregate counts for short boundaries
+      const shortCounts = {};
+      shortBounds.forEach(h => {
         const key = h.toString();
-        counts[key] = (counts[key] || 0) + 1;
+        shortCounts[key] = (shortCounts[key] || 0) + 1;
       });
 
-      Object.keys(counts).forEach(key => {
+      // Aggregate counts for tall boundaries
+      const tallCounts = {};
+      tallBounds.forEach(h => {
+        const key = h.toString();
+        tallCounts[key] = (tallCounts[key] || 0) + 1;
+      });
+
+      // Draw short boundaries: green
+      Object.keys(shortCounts).forEach(key => {
         const h = parseFloat(key);
-        const count = counts[key];
+        const count = shortCounts[key];
         const x = heightToX(h);
 
-        // Vertical line
+        ctx.strokeStyle = "green";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(x, axisY);
+        ctx.lineTo(x, membershipTop);
+        ctx.stroke();
+
+        const baseRadius = 4;
+        const radius = baseRadius + 2 * Math.sqrt(count - 1);
+        ctx.fillStyle = "green";
+        ctx.beginPath();
+        ctx.arc(x, membershipTop, radius, 0, 2 * Math.PI);
+        ctx.fill();
+      });
+
+      // Draw tall boundaries: blue line + red circle
+      Object.keys(tallCounts).forEach(key => {
+        const h = parseFloat(key);
+        const count = tallCounts[key];
+        const x = heightToX(h);
+
         ctx.strokeStyle = "#1f77b4";
         ctx.lineWidth = 2;
         ctx.beginPath();
@@ -137,7 +174,6 @@
         ctx.lineTo(x, membershipTop);
         ctx.stroke();
 
-        // Red circle at top (size ∝ count)
         const baseRadius = 4;
         const radius = baseRadius + 2 * Math.sqrt(count - 1);
         ctx.fillStyle = "red";
@@ -147,13 +183,27 @@
       });
     }
 
+    // Live listener: update whenever Firestore changes
     onSnapshot(votesRef, (snapshot) => {
-      thresholds = [];
+      shortBounds = [];
+      tallBounds = [];
+      let n = 0;
+
       snapshot.forEach(d => {
         const data = d.data();
-        if (typeof data.height === "number") thresholds.push(data.height);
+        // Support both old (height) and new (short, tall) schemas gracefully
+        if (typeof data.short === "number" && typeof data.tall === "number") {
+          shortBounds.push(data.short);
+          tallBounds.push(data.tall);
+          n++;
+        } else if (typeof data.height === "number") {
+          // legacy single-threshold docs mapped as tall-only
+          tallBounds.push(data.height);
+          n++;
+        }
       });
-      countEl.textContent = `${thresholds.length} responses collected.`;
+
+      countEl.textContent = `${n} responses collected.`;
       if (!showResults) {
         phaseNoteEl.innerHTML = `<strong>Phase 1:</strong> Collecting responses (graph is hidden).`;
       }
@@ -180,17 +230,18 @@
         promises.push(deleteDoc(doc(db, "tall_votes", d.id)));
       });
       await Promise.all(promises);
-      thresholds = [];
+      shortBounds = [];
+      tallBounds = [];
       showResults = false;
       countEl.textContent = "0 responses collected.";
       phaseNoteEl.innerHTML = `<strong>Phase 1:</strong> Collecting responses (graph is hidden).`;
       redraw();
     };
 
-    // NEW: download current canvas as PNG
+    // Download current canvas as PNG
     downloadBtn.onclick = () => {
       const link = document.createElement("a");
-      link.download = "fuzzy_tall_results.png";
+      link.download = "height_category_boundaries.png";
       link.href = canvas.toDataURL("image/png");
       link.click();
     };

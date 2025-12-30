@@ -2,32 +2,43 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Student – Where Does Tall Begin?</title>
+  <title>Student – Height Categories (Short / Medium / Tall)</title>
   <style>
     body { font-family: Arial, sans-serif; margin: 20px; }
-    label { font-weight: bold; }
-    input[type="number"] { width: 100px; padding: 4px; margin: 0 0.5em; }
-    button { padding: 6px 12px; cursor: pointer; }
+    label { font-weight: bold; display: block; margin-top: 10px; }
+    input[type="number"] { width: 100px; padding: 4px; margin: 0.5em 0; }
+    button { padding: 6px 12px; cursor: pointer; margin-top: 10px; }
     #msg { margin-top: 10px; font-size: 0.95em; }
   </style>
 </head>
 <body>
-  <h1>Where Does “Tall” Begin?</h1>
-  <p>Please enter the height (in cm) at which you consider a person to be <strong>tall</strong> (membership = 1).</p>
+  <h1>Where Do Short / Medium / Tall Begin?</h1>
+  <p>
+    Please enter two height values (in cm) that define three regions:
+  </p>
+  <ul>
+    <li><strong>Below H<sub>short</sub></strong> → a person is <strong>short</strong></li>
+    <li><strong>Between H<sub>short</sub> and H<sub>tall</sub></strong> → <strong>medium height</strong></li>
+    <li><strong>Above H<sub>tall</sub></strong> → <strong>tall</strong></li>
+  </ul>
 
-  <label for="heightInput">Tall starts at (cm):</label>
-  <input id="heightInput" type="number" min="140" max="220" step="1" />
+  <label for="shortInput">H<sub>short</sub> (cm) – below this height is SHORT:</label>
+  <input id="shortInput" type="number" min="140" max="220" step="1" />
+
+  <label for="tallInput">H<sub>tall</sub> (cm) – above this height is TALL:</label>
+  <input id="tallInput" type="number" min="140" max="220" step="1" />
+
   <button id="submitBtn">Submit</button>
 
   <div id="msg"></div>
 
   <script type="module">
-    // Import Firebase via CDN (works on GitHub Pages)
+    // Import Firebase via CDN (works with GitHub Pages)
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
     import { getFirestore, collection, addDoc, serverTimestamp }
       from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
 
-    // --- YOUR Firebase config (from Firebase console) ---
+    // --- YOUR Firebase config ---
     const firebaseConfig = {
       apiKey: "AIzaSyC4xLiPUb1TPZ_96jZHxOOZfeZvPonONIA",
       authDomain: "fuzzy-tall-demo.firebaseapp.com",
@@ -38,46 +49,58 @@
       measurementId: "G-X44WSXCEWZ"
     };
 
-    // Init Firebase + Firestore
     const app = initializeApp(firebaseConfig);
     const db = getFirestore(app);
+    // reuse same collection name (or change if you want a fresh one)
     const votesRef = collection(db, "tall_votes");
 
-    const heightInput = document.getElementById("heightInput");
+    const shortInput = document.getElementById("shortInput");
+    const tallInput = document.getElementById("tallInput");
     const submitBtn = document.getElementById("submitBtn");
     const msg = document.getElementById("msg");
 
     async function submitVote() {
       msg.textContent = "";
-      const val = parseFloat(heightInput.value);
-      if (isNaN(val)) {
-        msg.textContent = "Please enter a number.";
+      const sVal = parseFloat(shortInput.value);
+      const tVal = parseFloat(tallInput.value);
+
+      if (isNaN(sVal) || isNaN(tVal)) {
+        msg.textContent = "Please enter both H_short and H_tall.";
         return;
       }
-      if (val < 140 || val > 220) {
-        msg.textContent = "Please enter a value between 140 and 220 cm.";
+      if (sVal < 140 || sVal > 220 || tVal < 140 || tVal > 220) {
+        msg.textContent = "Please enter values between 140 and 220 cm.";
+        return;
+      }
+      if (sVal >= tVal) {
+        msg.textContent = "H_short must be strictly less than H_tall.";
         return;
       }
 
       try {
         await addDoc(votesRef, {
-          height: val,
+          short: sVal,
+          tall: tVal,
           timestamp: serverTimestamp()
         });
-        msg.textContent = "Thank you! Your answer has been recorded.";
-        heightInput.value = "";
-        // prevent multiple submissions from the same student on this device
-        heightInput.disabled = true;
+        msg.textContent = "Thank you! Your answers have been recorded.";
+        shortInput.value = "";
+        tallInput.value = "";
+        // Prevent multiple submissions from same device (optional)
+        shortInput.disabled = true;
+        tallInput.disabled = true;
         submitBtn.disabled = true;
       } catch (e) {
         console.error(e);
-        msg.textContent = "Error saving your answer. Please tell the instructor.";
+        msg.textContent = "Error saving your answers. Please tell the instructor.";
       }
     }
 
     submitBtn.addEventListener("click", submitVote);
-    heightInput.addEventListener("keyup", (e) => {
-      if (e.key === "Enter") submitVote();
+    [shortInput, tallInput].forEach(input => {
+      input.addEventListener("keyup", (e) => {
+        if (e.key === "Enter") submitVote();
+      });
     });
   </script>
 </body>
