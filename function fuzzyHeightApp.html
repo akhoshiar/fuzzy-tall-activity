@@ -1,0 +1,182 @@
+function fuzzyHeightApp
+% fuzzyHeightApp
+% Small interactive app to demonstrate fuzzification of height
+% into Short / Medium / Tall memberships.
+%
+% - Enter three heights: H_short < H_medium < H_tall
+% - The app draws membership functions:
+%       Short  : left shoulder
+%       Medium : triangle
+%       Tall   : right shoulder
+% - Enter a test height x0 (e.g. 176 cm)
+% - The app shows mu_short, mu_medium, mu_tall as numbers & %
+%   and marks the membership values on the plot.
+
+    % ----- Basic parameters ---------------------------------------------
+    xmin = 140;
+    xmax = 220;
+
+    % Default example values
+    Hs_default = 160;
+    Hm_default = 175;
+    Ht_default = 190;
+    x0_default = 176;
+
+    % ----- Create UI figure ---------------------------------------------
+    fig = uifigure('Name','Fuzzy Height Membership Demo', ...
+                   'Position',[200 100 950 520]);
+
+    ax = uiaxes(fig, ...
+        'Position',[70 160 820 330], ...
+        'BackgroundColor','w');
+    ax.XLim = [xmin xmax];
+    ax.YLim = [0 1.05];
+    ax.Box = 'on';
+    ax.XLabel.String = 'Height (cm)';
+    ax.YLabel.String = 'Membership degree';
+    title(ax,'Short / Medium / Tall Memberships');
+
+    % ----- Controls ------------------------------------------------------
+    % H_short
+    uilabel(fig,'Position',[70 120 120 22], ...
+                 'Text','H_{short} (cm):','FontWeight','bold');
+    editHshort = uieditfield(fig,'numeric', ...
+        'Position',[180 120 70 22], ...
+        'Limits',[xmin xmax], ...
+        'Value',Hs_default);
+
+    % H_medium
+    uilabel(fig,'Position',[270 120 120 22], ...
+                 'Text','H_{medium} (cm):','FontWeight','bold');
+    editHmed = uieditfield(fig,'numeric', ...
+        'Position',[390 120 70 22], ...
+        'Limits',[xmin xmax], ...
+        'Value',Hm_default);
+
+    % H_tall
+    uilabel(fig,'Position',[480 120 120 22], ...
+                 'Text','H_{tall} (cm):','FontWeight','bold');
+    editHtail = uieditfield(fig,'numeric', ...
+        'Position',[580 120 70 22], ...
+        'Limits',[xmin xmax], ...
+        'Value',Ht_default);
+
+    % Test height x0
+    uilabel(fig,'Position',[670 120 120 22], ...
+                 'Text','Test height (cm):','FontWeight','bold');
+    editX0 = uieditfield(fig,'numeric', ...
+        'Position',[800 120 70 22], ...
+        'Limits',[xmin xmax], ...
+        'Value',x0_default);
+
+    % Button
+    btn = uibutton(fig,'Text','Update + fuzzify', ...
+        'Position',[400 80 150 30], ...
+        'ButtonPushedFcn',@(src,event) updateAndFuzzify());
+
+    % Results labels
+    lblShort = uilabel(fig,'Position',[70 40 270 22], ...
+        'Text','Short:   μ = -,   % = -');
+    lblMed   = uilabel(fig,'Position',[350 40 270 22], ...
+        'Text','Medium:  μ = -,   % = -');
+    lblTall  = uilabel(fig,'Position',[630 40 270 22], ...
+        'Text','Tall:    μ = -,   % = -');
+
+    % ----- Helper: membership functions ---------------------------------
+    function mu = muShort(x,Hs,Hm)
+        % Left-shoulder: 1 for x <= Hs, 0 for x >= Hm
+        mu = zeros(size(x));
+        mu(x <= Hs) = 1;
+        idx = x > Hs & x < Hm;
+        if Hm > Hs
+            mu(idx) = (Hm - x(idx)) ./ (Hm - Hs);
+        end
+        mu(x >= Hm) = 0;
+    end
+
+    function mu = muMedium(x,Hs,Hm,Ht)
+        % Triangle (Hs -> Hm -> Ht)
+        mu = zeros(size(x));
+        left = x >= Hs & x <= Hm;
+        right = x > Hm & x <= Ht;
+        if Hm > Hs
+            mu(left) = (x(left) - Hs) ./ (Hm - Hs);
+        end
+        if Ht > Hm
+            mu(right) = (Ht - x(right)) ./ (Ht - Hm);
+        end
+    end
+
+    function mu = muTall(x,Hm,Ht)
+        % Right-shoulder: 0 for x <= Hm, 1 for x >= Ht
+        mu = zeros(size(x));
+        mu(x >= Ht) = 1;
+        idx = x > Hm & x < Ht;
+        if Ht > Hm
+            mu(idx) = (x(idx) - Hm) ./ (Ht - Hm);
+        end
+    end
+
+    % ----- Main update + fuzzification ----------------------------------
+    function updateAndFuzzify()
+        Hs = editHshort.Value;
+        Hm = editHmed.Value;
+        Ht = editHtail.Value;
+        x0 = editX0.Value;
+
+        if ~(Hs < Hm && Hm < Ht)
+            uialert(fig,'You must have H_{short} < H_{medium} < H_{tall}.', ...
+                        'Invalid ordering');
+            return;
+        end
+
+        % x-grid for plotting
+        x = linspace(xmin, xmax, 500);
+
+        muS = muShort(x,Hs,Hm);
+        muM = muMedium(x,Hs,Hm,Ht);
+        muT = muTall(x,Hm,Ht);
+
+        % Fuzzify test height x0
+        muS0 = muShort(x0,Hs,Hm);
+        muM0 = muMedium(x0,Hs,Hm,Ht);
+        muT0 = muTall(x0,Hm,Ht);
+
+        % ---- Plot ------------------------------------------------------
+        cla(ax);
+        hold(ax,'on');
+
+        plot(ax,x,muS,'LineWidth',2,'Color',[0 0.7 0]);       % green
+        plot(ax,x,muM,'LineWidth',2,'Color',[0.9 0.3 0.3]);   % red
+        plot(ax,x,muT,'LineWidth',2,'Color',[0.9 0.8 0.1]);   % yellow
+
+        % vertical line at x0
+        plot(ax,[x0 x0],[0 1],'k--','LineWidth',1);
+
+        % markers at membership values for x0
+        plot(ax,x0,muS0,'o','Color',[0 0.7 0],'MarkerFaceColor',[0 0.7 0]);
+        plot(ax,x0,muM0,'o','Color',[0.9 0.3 0.3],'MarkerFaceColor',[0.9 0.3 0.3]);
+        plot(ax,x0,muT0,'o','Color',[0.9 0.8 0.1],'MarkerFaceColor',[0.9 0.8 0.1]);
+
+        ax.XLim = [xmin xmax];
+        ax.YLim = [0 1.05];
+        ax.XLabel.String = 'Height (cm)';
+        ax.YLabel.String = 'Membership degree';
+        title(ax,sprintf('Fuzzy memberships for x = %.1f cm',x0));
+        legend(ax,{'Short','Medium','Tall','x_0'}, ...
+            'Location','southoutside','Orientation','horizontal');
+
+        hold(ax,'off');
+
+        % ---- Update labels --------------------------------------------
+        lblShort.Text = sprintf('Short:   \\mu = %.3f   (%.1f%%)', ...
+                                muS0, 100*muS0);
+        lblMed.Text   = sprintf('Medium:  \\mu = %.3f   (%.1f%%)', ...
+                                muM0, 100*muM0);
+        lblTall.Text  = sprintf('Tall:    \\mu = %.3f   (%.1f%%)', ...
+                                muT0, 100*muT0);
+    end
+
+    % initial draw
+    updateAndFuzzify();
+end
