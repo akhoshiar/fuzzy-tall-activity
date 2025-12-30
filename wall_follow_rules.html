@@ -195,8 +195,9 @@
     // Compute robot pose (xr, yr, theta) from FRONT/BACK labels
     function poseFromLabels(frontLabel, backLabel) {
       // sensors in BODY frame (front-right & back-right)
-      const pFrontB = [ +halfL, +halfW ];
-      const pBackB  = [ -halfL, +halfW ];
+      // y_B = -halfW  => right side of the robot
+      const pFrontB = [ +halfL, -halfW ];
+      const pBackB  = [ -halfL, -halfW ];
 
       const dF = labelToDistance(frontLabel);
       const dB = labelToDistance(backLabel);
@@ -269,9 +270,9 @@
         [-halfL,  halfW]
       ];
 
-      // sensors in BODY frame (front-right, back-right)
-      const pFrontB = [ +halfL, +halfW ];
-      const pBackB  = [ -halfL, +halfW ];
+      // sensors in BODY frame (front-right, back-right) – right side
+      const pFrontB = [ +halfL, -halfW ];
+      const pBackB  = [ -halfL, -halfW ];
 
       // rotation matrix
       const c = Math.cos(th), s = Math.sin(th);
