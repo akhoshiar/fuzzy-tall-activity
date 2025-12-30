@@ -22,23 +22,23 @@
   <div id="msg"></div>
 
   <script type="module">
-    // 1) Import Firebase SDK
+    // Import Firebase via CDN (works on GitHub Pages)
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
-    import { getFirestore, collection, addDoc, serverTimestamp } 
+    import { getFirestore, collection, addDoc, serverTimestamp }
       from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
 
-    // 2) Paste YOUR Firebase config here
+    // --- YOUR Firebase config (from Firebase console) ---
     const firebaseConfig = {
-      // <<< REPLACE THIS with your config from Firebase console >>>
-      apiKey: "YOUR_API_KEY",
-      authDomain: "YOUR_AUTH_DOMAIN",
-      projectId: "YOUR_PROJECT_ID",
-      storageBucket: "YOUR_BUCKET",
-      messagingSenderId: "YOUR_SENDER_ID",
-      appId: "YOUR_APP_ID"
+      apiKey: "AIzaSyC4xLiPUb1TPZ_96jZHxOOZfeZvPonONIA",
+      authDomain: "fuzzy-tall-demo.firebaseapp.com",
+      projectId: "fuzzy-tall-demo",
+      storageBucket: "fuzzy-tall-demo.firebasestorage.app",
+      messagingSenderId: "892353419886",
+      appId: "1:892353419886:web:0d61bf95a0de69d1f1647f",
+      measurementId: "G-X44WSXCEWZ"
     };
 
-    // 3) Init Firebase
+    // Init Firebase + Firestore
     const app = initializeApp(firebaseConfig);
     const db = getFirestore(app);
     const votesRef = collection(db, "tall_votes");
@@ -66,8 +66,9 @@
         });
         msg.textContent = "Thank you! Your answer has been recorded.";
         heightInput.value = "";
-        submitBtn.disabled = true;   // prevent multiple submissions from same student
+        // prevent multiple submissions from the same student on this device
         heightInput.disabled = true;
+        submitBtn.disabled = true;
       } catch (e) {
         console.error(e);
         msg.textContent = "Error saving your answer. Please tell the instructor.";

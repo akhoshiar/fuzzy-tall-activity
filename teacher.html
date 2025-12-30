@@ -33,19 +33,20 @@
 
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
-    import { 
-      getFirestore, collection, onSnapshot, deleteDoc, doc, getDocs 
+    import {
+      getFirestore, collection, onSnapshot,
+      deleteDoc, doc, getDocs
     } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
 
-    // Paste SAME config here
+    // --- SAME Firebase config here ---
     const firebaseConfig = {
-      // <<< REPLACE THIS with your Firebase config >>>
-      apiKey: "YOUR_API_KEY",
-      authDomain: "YOUR_AUTH_DOMAIN",
-      projectId: "YOUR_PROJECT_ID",
-      storageBucket: "YOUR_BUCKET",
-      messagingSenderId: "YOUR_SENDER_ID",
-      appId: "YOUR_APP_ID"
+      apiKey: "AIzaSyC4xLiPUb1TPZ_96jZHxOOZfeZvPonONIA",
+      authDomain: "fuzzy-tall-demo.firebaseapp.com",
+      projectId: "fuzzy-tall-demo",
+      storageBucket: "fuzzy-tall-demo.firebasestorage.app",
+      messagingSenderId: "892353419886",
+      appId: "1:892353419886:web:0d61bf95a0de69d1f1647f",
+      measurementId: "G-X44WSXCEWZ"
     };
 
     const app = initializeApp(firebaseConfig);
@@ -116,7 +117,6 @@
       drawAxes();
       if (!showResults) return;
 
-      // Count votes per height
       const counts = {};
       thresholds.forEach(h => {
         const key = h.toString();
@@ -146,14 +146,12 @@
       });
     }
 
-    // Listen to live updates from Firestore
+    // Live listener: update thresholds whenever Firestore changes
     onSnapshot(votesRef, (snapshot) => {
       thresholds = [];
-      snapshot.forEach(doc => {
-        const data = doc.data();
-        if (typeof data.height === "number") {
-          thresholds.push(data.height);
-        }
+      snapshot.forEach(d => {
+        const data = d.data();
+        if (typeof data.height === "number") thresholds.push(data.height);
       });
       countEl.textContent = `${thresholds.length} responses collected.`;
       if (!showResults) {
