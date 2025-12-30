@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Short / Medium / Tall Regions (Web App)</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 20px;
+      background: #f7f7f7;
+    }
+    h1 {
+      text-align: center;
+      margin-bottom: 0.5em;
+    }
+    #controls {
+      margin-top: 15px;
+      text-align: center;
+    }
+    label {
+      font-weight: bold;
+      margin-right: 6px;
+    }
+    input[type="number"] {
+      width: 70px;
+      padding: 3px;
+      margin-right: 15px;
+    }
+    button {
+      padding: 6px 12px;
+      margin-left: 5px;
+      cursor: pointer;
+    }
+    #msg {
+      margin-top: 8px;
+      text-align: center;
+      color: darkred;
+      font-size: 0.9em;
+      min-height: 1.2em;
+    }
+    canvas {
+      display: block;
+      margin: 0 auto;
+      background: #ffffff;
+      border: 1px solid #ccc;
+    }
+  </style>
+</head>
+<body>
+  <h1>Short / Medium / Tall Regions</h1>
+
+  <canvas id="chart" width="900" height="350"></canvas>
+
+  <div id="controls">
+    <label for="shortInput">H<sub>short</sub> (cm):</label>
+    <input id="shortInput" type="number" min="140" max="220" step="1" value="160" />
+
+    <label for="tallInput">H<sub>tall</sub> (cm):</label>
+    <input id="tallInput" type="number" min="140" max="220" step="1" value="185" />
+
+    <button id="updateBtn">Update plot</button>
+    <button id="resetBtn">Reset</button>
+  </div>
+
+  <div id="msg"></div>
+
+  <script>
+    const canvas = document.getElementById("chart");
+    const ctx = canvas.getContext("2d");
+
+    const shortInput = document.getElementById("shortInput");
+    const tallInput = document.getElementById("tallInput");
+    const updateBtn = document.getElementById("updateBtn");
+    const resetBtn = document.getElementById("resetBtn");
+    const msg = document.getElementById("msg");
+
+    // Axis settings
+    const minH = 140;
+    const maxH = 220;
+    const marginLeft = 60;
+    const marginRight = 40;
+    const marginBottom = 40;
+    const marginTop = 40;
+
+    const xAxisY = canvas.height - marginBottom; // y position of x-axis
+    const yAxisX = marginLeft;                   // x position of y-axis
+
+    function hToX(h) {
+      return (
+        yAxisX +
+        ((h - minH) / (maxH - minH)) * (canvas.width - marginLeft - marginRight)
+      );
+    }
+
+    function drawAxes() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      // X-axis (red)
+      ctx.strokeStyle = "red";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(yAxisX, xAxisY);
+      ctx.lineTo(canvas.width - marginRight, xAxisY);
+      ctx.stroke();
+
+      // Y-axis (red)
+      ctx.beginPath();
+      ctx.moveTo(yAxisX, xAxisY);
+      ctx.lineTo(yAxisX, marginTop);
+      ctx.stroke();
+
+      // X ticks and labels
+      ctx.font = "12px Arial";
+      ctx.fillStyle = "black";
+      const step = 10; // every 10 cm
+      for (let h = minH; h <= maxH; h += step) {
+        const x = hToX(h);
+        ctx.beginPath();
+        ctx.moveTo(x, xAxisY);
+        ctx.lineTo(x, xAxisY - 5);
+        ctx.strokeStyle = "red";
+        ctx.stroke();
+        ctx.fillText(h.toString(), x - 10, xAxisY + 15);
+      }
+      ctx.fillText("CM", canvas.width - marginRight - 20, xAxisY + 30);
+
+      // Y labels: Short (bottom), Medium (middle), Tall (top)
+      ctx.textAlign = "right";
+      ctx.fillText("Short", yAxisX - 5, xAxisY + 4);
+      ctx.fillText("Medium", yAxisX - 5, (xAxisY + marginTop) / 2 + 4);
+      ctx.fillText("Tall", yAxisX - 5, marginTop + 4);
+      ctx.textAlign = "left";
+
+      // Title
+      ctx.font = "18px Arial";
+      ctx.textAlign = "center";
+      ctx.fillText(
+        "Short / Medium / Tall Regions",
+        canvas.width / 2,
+        marginTop - 10
+      );
+      ctx.textAlign = "left";
+    }
+
+    function drawRegions(Hs, Ht) {
+      drawAxes();
+
+      const top = marginTop;
+      const bottom = xAxisY;
+
+      // Medium region (yellow) between Hs and Ht
+      const xHs = hToX(Hs);
+      const xHt = hToX(Ht);
+
+      ctx.fillStyle = "#ffcc00"; // yellow
+      ctx.fillRect(xHs, top, xHt - xHs, bottom - top);
+
+      // Tall region (green) from Ht to maxH
+      const xMax = hToX(maxH);
+      ctx.fillStyle = "#00aa00"; // green
+      ctx.fillRect(xHt, top, xMax - xHt, bottom - top);
+
+      // Optional vertical dashed lines at boundaries
+      ctx.setLineDash([6, 4]);
+      ctx.strokeStyle = "#cc8800";
+      ctx.beginPath();
+      ctx.moveTo(xHs, bottom);
+      ctx.lineTo(xHs, top);
+      ctx.stroke();
+
+      ctx.strokeStyle = "#006600";
+      ctx.beginPath();
+      ctx.moveTo(xHt, bottom);
+      ctx.lineTo(xHt, top);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // Labels H_short, H_tall
+      ctx.font = "12px Arial";
+      ctx.fillStyle = "black";
+      ctx.textAlign = "center";
+      ctx.fillText("H_short", xHs, bottom + 28);
+      ctx.fillText("H_tall", xHt, bottom + 28);
+      ctx.textAlign = "left";
+    }
+
+    function updatePlot() {
+      msg.textContent = "";
+      const Hs = parseFloat(shortInput.value);
+      const Ht = parseFloat(tallInput.value);
+
+      if (isNaN(Hs) || isNaN(Ht)) {
+        msg.textContent = "Please enter both H_short and H_tall.";
+        drawAxes();
+        return;
+      }
+      if (Hs < minH || Hs > maxH || Ht < minH || Ht > maxH) {
+        msg.textContent = `Values must be between ${minH} and ${maxH} cm.`;
+        drawAxes();
+        return;
+      }
+      if (Hs >= Ht) {
+        msg.textContent = "H_short must be strictly less than H_tall.";
+        drawAxes();
+        return;
+      }
+
+      drawRegions(Hs, Ht);
+    }
+
+    function resetValues() {
+      shortInput.value = 160;
+      tallInput.value = 185;
+      msg.textContent = "";
+      updatePlot();
+    }
+
+    updateBtn.addEventListener("click", updatePlot);
+    resetBtn.addEventListener("click", resetValues);
+
+    // Allow Enter key to update
+    shortInput.addEventListener("keyup", e => {
+      if (e.key === "Enter") updatePlot();
+    });
+    tallInput.addEventListener("keyup", e => {
+      if (e.key === "Enter") updatePlot();
+    });
+
+    // Initial draw
+    resetValues();
+  </script>
+</body>
+</html>
