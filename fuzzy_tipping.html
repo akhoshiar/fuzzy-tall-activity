@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Fuzzy Tipping Demo</title>
+<style>
+  body {
+    font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    background: #f5f7fb;
+    margin: 0;
+    padding: 0;
+  }
+  .page {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 20px 16px 40px;
+  }
+  h1 {
+    margin-top: 0;
+    text-align: center;
+  }
+  .layout {
+    display: grid;
+    grid-template-columns: 280px 1fr;
+    gap: 20px;
+  }
+  @media (max-width: 900px) {
+    .layout {
+      grid-template-columns: 1fr;
+    }
+  }
+  .card {
+    background: #fff;
+    border-radius: 10px;
+    box-shadow: 0 2px 7px rgba(0,0,0,0.08);
+    padding: 16px 18px 18px;
+  }
+  .card h2 {
+    margin: 0 0 10px;
+    font-size: 1.1rem;
+  }
+  .slider-block {
+    margin-bottom: 24px;
+  }
+  .slider-block label {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.9rem;
+    margin-bottom: 4px;
+  }
+  input[type="range"] {
+    width: 100%;
+  }
+  .output-tip {
+    font-size: 1.6rem;
+    font-weight: 700;
+    text-align: center;
+    margin: 10px 0 4px;
+  }
+  .output-sub {
+    text-align: center;
+    font-size: 0.9rem;
+    color: #555;
+  }
+  .rule-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.85rem;
+    margin-top: 8px;
+  }
+  .rule-table th, .rule-table td {
+    padding: 4px 6px;
+    border-bottom: 1px solid #e2e2e2;
+  }
+  .rule-table th {
+    background: #f0f0f7;
+    text-align: left;
+  }
+  canvas {
+    width: 100%;
+    height: 260px;
+    background: #ffffff;
+    border-radius: 6px;
+    box-shadow: inset 0 0 0 1px #e0e0f0;
+  }
+  .small {
+    font-size: 0.8rem;
+    color: #555;
+  }
+</style>
+</head>
+<body>
+<div class="page">
+  <h1>Fuzzy Tipping – Web Demo</h1>
+
+  <div class="layout">
+    <!-- LEFT: inputs & outputs -->
+    <div class="card">
+      <h2>Inputs (0 – 10)</h2>
+
+      <div class="slider-block">
+        <label>
+          <span>Service quality</span>
+          <span id="serviceVal">5.0</span>
+        </label>
+        <input id="serviceSlider" type="range" min="0" max="10" step="0.1" value="5">
+      </div>
+
+      <div class="slider-block">
+        <label>
+          <span>Food quality</span>
+          <span id="foodVal">5.0</span>
+        </label>
+        <input id="foodSlider" type="range" min="0" max="10" step="0.1" value="5">
+      </div>
+
+      <div class="card" style="margin-top: 4px; background:#f8fafc;">
+        <div class="output-tip" id="tipOutput">Tip = -- %</div>
+        <div class="output-sub" id="domLabel"></div>
+      </div>
+
+      <h2 style="margin-top:16px;">Rule firing strengths</h2>
+      <table class="rule-table">
+        <thead>
+          <tr>
+            <th>Rule</th>
+            <th>Text</th>
+            <th>Strength</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>R1</td>
+            <td>If service is <b>poor</b> OR food is <b>rancid</b> → tip is <b>low</b></td>
+            <td id="r1Val">0.00</td>
+          </tr>
+          <tr>
+            <td>R2</td>
+            <td>If service is <b>good</b> → tip is <b>average</b></td>
+            <td id="r2Val">0.00</td>
+          </tr>
+          <tr>
+            <td>R3</td>
+            <td>If service is <b>excellent</b> OR food is <b>delicious</b> → tip is <b>high</b></td>
+            <td id="r3Val">0.00</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <p class="small" style="margin-top:10px;">
+        Same membership functions and rules as in Brian’s MATLAB Tech Talk.
+        OR = max, AND = min, defuzzification = centroid.
+      </p>
+    </div>
+
+    <!-- RIGHT: plot -->
+    <div class="card">
+      <h2>Tip Memberships & Defuzzification</h2>
+      <canvas id="tipCanvas" width="700" height="260"></canvas>
+      <p class="small">
+        Triangular MFs for <em>low</em>, <em>average</em>, <em>high</em> (0–30&nbsp;%).
+        Vertical dashed line and red dot show the defuzzified tip and its degree of membership
+        in the aggregated fuzzy output.
+      </p>
+    </div>
+  </div>
+</div>
+
+<script>
+// --------- Membership functions (same as MATLAB) -----------------
+function gaussmf(x, sigma, c) {
+  var d = x - c;
+  return Math.exp(-(d * d) / (2 * sigma * sigma));
+}
+function trapmf(x, a, b, c, d) {
+  if (x <= a || x >= d) return 0;
+  if (x >= b && x <= c) return 1;
+  if (x > a && x < b)  return (x - a) / (b - a);
+  // c < x < d
+  return (d - x) / (d - c);
+}
+function trimf(x, a, b, c) {
+  if (x <= a || x >= c) return 0;
+  if (x === b) return 1;
+  if (x > a && x < b) return (x - a) / (b - a);
+  // b < x < c
+  return (c - x) / (c - b);
+}
+
+// --------- Fuzzy inference: evaluate tip given service & food ---------
+function evalFuzzyTip(service, food) {
+  // Input membership degrees
+  var poor       = gaussmf(service, 1.5, 0);
+  var good       = gaussmf(service, 1.5, 5);
+  var excellent  = gaussmf(service, 1.5, 10);
+
+  var rancid     = trapmf(food, 0, 0, 2, 4);
+  var fine       = trapmf(food, 2, 4, 6, 8);
+  var delicious  = trapmf(food, 6, 8, 10, 10);
+
+  // Rule firing strengths
+  var r1 = Math.max(poor, rancid);       // → low
+  var r2 = good;                         // → average
+  var r3 = Math.max(excellent, delicious); // → high
+
+  // Mamdani inference + centroid defuzzification over tip in [0,30]
+  var xMin = 0, xMax = 30, n = 600;
+  var step = (xMax - xMin) / (n - 1);
+  var sumNum = 0, sumDen = 0;
+
+  var xTipValues = [];  // for plotting if needed
+  var muAggValues = [];
+
+  for (var i = 0; i < n; i++) {
+    var x = xMin + i * step;
+
+    var muLow     = trimf(x, 0, 5, 15);
+    var muAverage = trimf(x, 5, 15, 25);
+    var muHigh    = trimf(x, 15, 25, 30);
+
+    var lowClip  = Math.min(r1, muLow);
+    var avgClip  = Math.min(r2, muAverage);
+    var highClip = Math.min(r3, muHigh);
+
+    var muAgg = Math.max(lowClip, avgClip, highClip);
+
+    xTipValues.push(x);
+    muAggValues.push(muAgg);
+
+    sumNum += x * muAgg;
+    sumDen += muAgg;
+  }
+
+  var tip = (sumDen > 0) ? (sumNum / sumDen) : 0;
+
+  return {
+    tip: tip,
+    rule1: r1,
+    rule2: r2,
+    rule3: r3,
+    xTip: xTipValues,
+    muAgg: muAggValues
+  };
+}
+
+// --------- Drawing on canvas ------------------------------------
+function drawTipCanvas(ctx, tipResult) {
+  var w = ctx.canvas.width;
+  var h = ctx.canvas.height;
+
+  // clear
+  ctx.clearRect(0,0,w,h);
+
+  // plot area margins
+  var left = 40, right = 10, bottom = 30, top = 10;
+  var plotW = w - left - right;
+  var plotH = h - top - bottom;
+
+  // transforms
+  function xToPx(x) {
+    return left + (x / 30) * plotW;
+  }
+  function yToPy(mu) {
+    return top + (1 - mu) * plotH;
+  }
+
+  // axes
+  ctx.strokeStyle = "#444";
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(left, top + plotH);
+  ctx.lineTo(left + plotW, top + plotH); // x-axis
+  ctx.moveTo(left, top);
+  ctx.lineTo(left, top + plotH);         // y-axis
+  ctx.stroke();
+
+  // x-axis ticks
+  ctx.font = "10px system-ui";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "top";
+  for (var x = 0; x <= 30; x += 5) {
+    var px = xToPx(x);
+    ctx.beginPath();
+    ctx.moveTo(px, top + plotH);
+    ctx.lineTo(px, top + plotH + 4);
+    ctx.stroke();
+    ctx.fillText(x.toString(), px, top + plotH + 6);
+  }
+  ctx.save();
+  ctx.translate(12, h/2);
+  ctx.rotate(-Math.PI/2);
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText("Degree of membership", 0, 0);
+  ctx.restore();
+  ctx.textAlign = "center";
+  ctx.textBaseline = "bottom";
+  ctx.fillText("Tip (%)", left + plotW/2, h - 2);
+
+  // helper to draw triangular MF
+  function drawTrimf(color, a,b,c) {
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(xToPx(a), yToPy(0));
+    ctx.lineTo(xToPx(b), yToPy(1));
+    ctx.lineTo(xToPx(c), yToPy(0));
+    ctx.stroke();
+  }
+
+  // base MFs
+  drawTrimf("#4c6fff", 0, 5, 15);   // low
+  drawTrimf("#ff9f1c", 5, 15, 25);  // average
+  drawTrimf("#2ec4b6", 15, 25, 30); // high
+
+  // aggregated set (light fill)
+  ctx.beginPath();
+  var first = true;
+  for (var i = 0; i < tipResult.xTip.length; i++) {
+    var x = tipResult.xTip[i];
+    var mu = tipResult.muAgg[i];
+    if (mu <= 0) continue;
+    var px = xToPx(x);
+    var py = yToPy(mu);
+    if (first) {
+      ctx.moveTo(px, yToPy(0));
+      first = false;
+    }
+    ctx.lineTo(px, py);
+  }
+  // close back to axis
+  if (!first) {
+    ctx.lineTo(xToPx(tipResult.xTip[tipResult.xTip.length-1]), yToPy(0));
+    ctx.closePath();
+    ctx.fillStyle = "rgba(0,0,0,0.06)";
+    ctx.fill();
+  }
+
+  // vertical line at centroid
+  var tip = tipResult.tip;
+  var pxTip = xToPx(tip);
+  ctx.setLineDash([5,4]);
+  ctx.strokeStyle = "#aa0000";
+  ctx.lineWidth = 1.2;
+  ctx.beginPath();
+  ctx.moveTo(pxTip, top);
+  ctx.lineTo(pxTip, top + plotH);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // marker at centroid on aggregated curve
+  // compute mu at tip from aggregated curve (approx)
+  var idx = Math.round(tip / 30 * (tipResult.xTip.length - 1));
+  var muTip = tipResult.muAgg[idx];
+  var pyTip = yToPy(muTip);
+
+  ctx.fillStyle = "#ff3333";
+  ctx.beginPath();
+  ctx.arc(pxTip, pyTip, 4, 0, 2*Math.PI);
+  ctx.fill();
+}
+
+// --------- Hook up UI -------------------------------------------
+var serviceSlider = document.getElementById("serviceSlider");
+var foodSlider    = document.getElementById("foodSlider");
+var serviceValLbl = document.getElementById("serviceVal");
+var foodValLbl    = document.getElementById("foodVal");
+var tipOutputLbl  = document.getElementById("tipOutput");
+var domLabel      = document.getElementById("domLabel");
+var r1Lbl = document.getElementById("r1Val");
+var r2Lbl = document.getElementById("r2Val");
+var r3Lbl = document.getElementById("r3Val");
+var tipCanvas = document.getElementById("tipCanvas");
+var ctx = tipCanvas.getContext("2d");
+
+function update() {
+  var s = parseFloat(serviceSlider.value);
+  var f = parseFloat(foodSlider.value);
+  serviceValLbl.textContent = s.toFixed(1);
+  foodValLbl.textContent    = f.toFixed(1);
+
+  var res = evalFuzzyTip(s, f);
+  var tip = res.tip;
+
+  tipOutputLbl.textContent = "Tip = " + tip.toFixed(1) + " %";
+
+  // dominant label for fun
+  var muLow     = trimf(tip, 0,5,15);
+  var muAverage = trimf(tip, 5,15,25);
+  var muHigh    = trimf(tip, 15,25,30);
+  var maxMu = Math.max(muLow, muAverage, muHigh);
+  var label = (maxMu === muLow) ? "low" :
+              (maxMu === muAverage) ? "average" : "high";
+  domLabel.textContent = "Dominant output set: " + label;
+
+  r1Lbl.textContent = res.rule1.toFixed(2);
+  r2Lbl.textContent = res.rule2.toFixed(2);
+  r3Lbl.textContent = res.rule3.toFixed(2);
+
+  drawTipCanvas(ctx, res);
+}
+
+serviceSlider.addEventListener("input", update);
+foodSlider.addEventListener("input", update);
+
+// initial draw
+update();
+</script>
+</body>
+</html>
