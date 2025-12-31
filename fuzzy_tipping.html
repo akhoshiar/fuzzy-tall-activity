@@ -98,20 +98,22 @@
     <div class="card">
       <h2>Inputs (0 – 10)</h2>
 
-      <div class="slider-block">
-        <label>
-          <span>Service quality</span>
-          <span id="serviceVal">5.0</span>
-        </label>
-        <input id="serviceSlider" type="range" min="0" max="10" step="0.1" value="5">
-      </div>
-
+      <!-- FOOD FIRST -->
       <div class="slider-block">
         <label>
           <span>Food quality</span>
           <span id="foodVal">5.0</span>
         </label>
         <input id="foodSlider" type="range" min="0" max="10" step="0.1" value="5">
+      </div>
+
+      <!-- SERVICE SECOND -->
+      <div class="slider-block">
+        <label>
+          <span>Service quality</span>
+          <span id="serviceVal">5.0</span>
+        </label>
+        <input id="serviceSlider" type="range" min="0" max="10" step="0.1" value="5">
       </div>
 
       <div class="card" style="margin-top: 4px; background:#f8fafc;">
@@ -176,20 +178,18 @@ function trapmf(x, a, b, c, d) {
   if (x <= a || x >= d) return 0;
   if (x >= b && x <= c) return 1;
   if (x > a && x < b)  return (x - a) / (b - a);
-  // c < x < d
   return (d - x) / (d - c);
 }
 function trimf(x, a, b, c) {
   if (x <= a || x >= c) return 0;
   if (x === b) return 1;
   if (x > a && x < b) return (x - a) / (b - a);
-  // b < x < c
   return (c - x) / (c - b);
 }
 
-// --------- Fuzzy inference: evaluate tip given service & food ---------
+// --------- Fuzzy inference --------------------------------------
 function evalFuzzyTip(service, food) {
-  // Input membership degrees
+  // input MFs
   var poor       = gaussmf(service, 1.5, 0);
   var good       = gaussmf(service, 1.5, 5);
   var excellent  = gaussmf(service, 1.5, 10);
@@ -198,22 +198,20 @@ function evalFuzzyTip(service, food) {
   var fine       = trapmf(food, 2, 4, 6, 8);
   var delicious  = trapmf(food, 6, 8, 10, 10);
 
-  // Rule firing strengths
-  var r1 = Math.max(poor, rancid);       // → low
-  var r2 = good;                         // → average
-  var r3 = Math.max(excellent, delicious); // → high
+  // rules
+  var r1 = Math.max(poor, rancid);          // low
+  var r2 = good;                            // average
+  var r3 = Math.max(excellent, delicious);  // high
 
-  // Mamdani inference + centroid defuzzification over tip in [0,30]
+  // Mamdani + centroid on tip [0,30]
   var xMin = 0, xMax = 30, n = 600;
   var step = (xMax - xMin) / (n - 1);
   var sumNum = 0, sumDen = 0;
-
-  var xTipValues = [];  // for plotting if needed
+  var xTipValues = [];
   var muAggValues = [];
 
   for (var i = 0; i < n; i++) {
     var x = xMin + i * step;
-
     var muLow     = trimf(x, 0, 5, 15);
     var muAverage = trimf(x, 5, 15, 25);
     var muHigh    = trimf(x, 15, 25, 30);
@@ -243,38 +241,31 @@ function evalFuzzyTip(service, food) {
   };
 }
 
-// --------- Drawing on canvas ------------------------------------
+// --------- Canvas drawing ---------------------------------------
 function drawTipCanvas(ctx, tipResult) {
   var w = ctx.canvas.width;
   var h = ctx.canvas.height;
 
-  // clear
   ctx.clearRect(0,0,w,h);
 
-  // plot area margins
   var left = 40, right = 10, bottom = 30, top = 10;
   var plotW = w - left - right;
   var plotH = h - top - bottom;
 
-  // transforms
-  function xToPx(x) {
-    return left + (x / 30) * plotW;
-  }
-  function yToPy(mu) {
-    return top + (1 - mu) * plotH;
-  }
+  function xToPx(x)  { return left + (x / 30) * plotW; }
+  function yToPy(mu) { return top + (1 - mu) * plotH; }
 
   // axes
   ctx.strokeStyle = "#444";
-  ctx.lineWidth = 1;
+  ctx.lineWidth   = 1;
   ctx.beginPath();
   ctx.moveTo(left, top + plotH);
-  ctx.lineTo(left + plotW, top + plotH); // x-axis
+  ctx.lineTo(left + plotW, top + plotH);
   ctx.moveTo(left, top);
-  ctx.lineTo(left, top + plotH);         // y-axis
+  ctx.lineTo(left, top + plotH);
   ctx.stroke();
 
-  // x-axis ticks
+  // x ticks
   ctx.font = "10px system-ui";
   ctx.textAlign = "center";
   ctx.textBaseline = "top";
@@ -297,10 +288,9 @@ function drawTipCanvas(ctx, tipResult) {
   ctx.textBaseline = "bottom";
   ctx.fillText("Tip (%)", left + plotW/2, h - 2);
 
-  // helper to draw triangular MF
   function drawTrimf(color, a,b,c) {
     ctx.strokeStyle = color;
-    ctx.lineWidth = 1.5;
+    ctx.lineWidth   = 1.5;
     ctx.beginPath();
     ctx.moveTo(xToPx(a), yToPy(0));
     ctx.lineTo(xToPx(b), yToPy(1));
@@ -309,11 +299,11 @@ function drawTipCanvas(ctx, tipResult) {
   }
 
   // base MFs
-  drawTrimf("#4c6fff", 0, 5, 15);   // low
-  drawTrimf("#ff9f1c", 5, 15, 25);  // average
-  drawTrimf("#2ec4b6", 15, 25, 30); // high
+  drawTrimf("#4c6fff", 0, 5, 15);
+  drawTrimf("#ff9f1c", 5, 15, 25);
+  drawTrimf("#2ec4b6", 15, 25, 30);
 
-  // aggregated set (light fill)
+  // aggregated area
   ctx.beginPath();
   var first = true;
   for (var i = 0; i < tipResult.xTip.length; i++) {
@@ -328,7 +318,6 @@ function drawTipCanvas(ctx, tipResult) {
     }
     ctx.lineTo(px, py);
   }
-  // close back to axis
   if (!first) {
     ctx.lineTo(xToPx(tipResult.xTip[tipResult.xTip.length-1]), yToPy(0));
     ctx.closePath();
@@ -336,21 +325,19 @@ function drawTipCanvas(ctx, tipResult) {
     ctx.fill();
   }
 
-  // vertical line at centroid
+  // centroid line + point
   var tip = tipResult.tip;
   var pxTip = xToPx(tip);
   ctx.setLineDash([5,4]);
   ctx.strokeStyle = "#aa0000";
-  ctx.lineWidth = 1.2;
+  ctx.lineWidth   = 1.2;
   ctx.beginPath();
   ctx.moveTo(pxTip, top);
   ctx.lineTo(pxTip, top + plotH);
   ctx.stroke();
   ctx.setLineDash([]);
 
-  // marker at centroid on aggregated curve
-  // compute mu at tip from aggregated curve (approx)
-  var idx = Math.round(tip / 30 * (tipResult.xTip.length - 1));
+  var idx   = Math.round(tip / 30 * (tipResult.xTip.length - 1));
   var muTip = tipResult.muAgg[idx];
   var pyTip = yToPy(muTip);
 
@@ -384,7 +371,6 @@ function update() {
 
   tipOutputLbl.textContent = "Tip = " + tip.toFixed(1) + " %";
 
-  // dominant label for fun
   var muLow     = trimf(tip, 0,5,15);
   var muAverage = trimf(tip, 5,15,25);
   var muHigh    = trimf(tip, 15,25,30);
